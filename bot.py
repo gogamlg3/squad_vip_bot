@@ -6,6 +6,7 @@ import toml
 import json
 from discord import app_commands
 from datetime import datetime
+from dateutil.parser import isoparse as datetime_isoparse
 
 handler = logging.FileHandler(filename='discord_bot.log', encoding='utf-8', mode='w')
 
@@ -57,9 +58,8 @@ async def add_command(interaction: discord.Interaction, player_name: str, steam_
 @app_commands.describe(steam_id = "SteamID")
 async def vip_command(interaction: discord.Interaction, steam_id: str):
     print(f"[{datetime.now()}]: {interaction.user.name} uses command /vip")
-    url_with_steam = f"{rest_url}?steam_id={steam_id}"
+    url_with_steam = f"{rest_url}?fields=date_of_end&steam_id={steam_id}"
     req = requests.get(url_with_steam, headers={"Authorization":f"Token {rest_token}"})
-    print(req.text)
 
     if req.text in ["[]", '{"steam_id":["Введите число."]}']:
         await interaction.response.send_message(f"У вас нет випа или вы ввели неверный SteamID", ephemeral=True)
@@ -71,12 +71,9 @@ async def vip_command(interaction: discord.Interaction, steam_id: str):
             await interaction.response.send_message(f"Дата окончания вип: Бессрочно", ephemeral=True)
 
         else:
-            date_list = jlist.split('-')
-            year = date_list[0]
-            month = date_list[1]
-            day = date_list[2].split('T')[0]
-            time = date_list[2].split('T')[1].split('+')[0].split('.')[0]
-            await interaction.response.send_message(f"Дата окончания вип: {day}.{month}.{year} {time} МСК", ephemeral=True)
+            timestamp = datetime_isoparse(jlist).strftime('%d.%m.%Y %H:%M')
+            
+            await interaction.response.send_message(f"Дата окончания вип: {timestamp} МСК", ephemeral=True)
 
 
 @client.event
