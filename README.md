@@ -6,7 +6,7 @@
 ```
 # pip install -r requirements.txt
 ```
-Заполняем config.toml на примере файла config.example.toml
+Заполняем config.toml на примере файла config.example.toml (ссылки вставляйте со слешем в конце)
 
 Запускаем:
 ```
