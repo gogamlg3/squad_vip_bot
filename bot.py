@@ -5,17 +5,18 @@ import requests
 import toml
 import json
 from discord import app_commands
-from datetime import datetime
+from datetime import datetime, timezone
 from dateutil.parser import isoparse as datetime_isoparse
 
 handler = logging.FileHandler(filename='discord_bot.log', encoding='utf-8', mode='w')
+logging.basicConfig(level=logging.INFO, filename="command.log", filemode="a",  format="[%(asctime)s]: %(message)s")
 
 CONFIG = toml.load("config.toml")
-webhook_url = CONFIG["WEBHOOK_URL"]
-admin_role = CONFIG["ROLE"]
-token = CONFIG["BOT_TOKEN"]
-rest_token = CONFIG["AUTH_TOKEN"]
-rest_url = CONFIG["REST_API_URL"]
+WEBHOOK_URL = CONFIG["WEBHOOK_URL"]
+ADMIN_ROLE = CONFIG["ROLE"]
+TOKEN = CONFIG["BOT_TOKEN"]
+REST_TOKEN = CONFIG["AUTH_TOKEN"]
+REST_URL = CONFIG["REST_API_URL"]
 
 intents = discord.Intents.default()
 intents.message_content = True
@@ -29,7 +30,7 @@ tree = app_commands.CommandTree(client)
                        date = "На сколько дней выдать вип?")
 async def add_command(interaction: discord.Interaction, player_name: str, steam_id: str, date: str):
     try:
-        if admin_role in [role.id for role in interaction.user.roles]:
+        if ADMIN_ROLE in [role.id for role in interaction.user.roles]:
             data = {
                    "steam_id": steam_id,
                    "name": player_name,
@@ -37,8 +38,9 @@ async def add_command(interaction: discord.Interaction, player_name: str, steam_
                    "duration_until_end": date
                    }
 
-            r = requests.post(webhook_url, data=data)
+            r = requests.post(WEBHOOK_URL, data=data)
             print(f"[{datetime.now()}]: {interaction.user.name} uses command /add")
+            logging.info(f"[{datetime.now()}]: {interaction.user.name} uses command /add")
 
             if r.text != '{"detail":"Created"}':
                 await interaction.response.send_message(f"Ты что-то неправильно ввел\n\n{r.text}", ephemeral=True)
@@ -47,6 +49,7 @@ async def add_command(interaction: discord.Interaction, player_name: str, steam_
                 await interaction.response.send_message(f"{interaction.user.mention} дал вип игроку '{player_name}' на срок {date} дня(-ей)")
         else:
             print(f"[{datetime.now()}]: {interaction.user.name} uses command /add without admin role")
+            logging.info(f"[{datetime.now()}]: {interaction.user.name} uses command /add")
             await interaction.response.send_message("У вас нет прав на использование этой команды", ephemeral=True)
 
 
@@ -57,23 +60,35 @@ async def add_command(interaction: discord.Interaction, player_name: str, steam_
 @tree.command(name="vip", description="Узнать время до истечения випки")
 @app_commands.describe(steam_id = "SteamID")
 async def vip_command(interaction: discord.Interaction, steam_id: str):
-    print(f"[{datetime.now()}]: {interaction.user.name} uses command /vip")
-    url_with_steam = f"{rest_url}?fields=date_of_end&steam_id={steam_id}"
-    req = requests.get(url_with_steam, headers={"Authorization":f"Token {rest_token}"})
+    try:
+        print(f"[{datetime.now()}]: {interaction.user.name} uses command /vip")
+        logging.info(f"[{datetime.now()}]: {interaction.user.name} uses command /vip")
+        
+        url_with_steam = f"{REST_URL}?steam_id={steam_id}"
+        req = requests.get(url_with_steam, headers={"Authorization":f"Token {REST_TOKEN}"})
 
-    if req.text in ["[]", '{"steam_id":["Введите число."]}']:
-        await interaction.response.send_message(f"У вас нет випа или вы ввели неверный SteamID", ephemeral=True)
-
-    else:
-        jlist = json.loads(req.text)[0]['date_of_end']
-
-        if jlist == None:
-            await interaction.response.send_message(f"Дата окончания вип: Бессрочно", ephemeral=True)
+        if req.text in ["[]", '{"steam_id":["Введите число."]}']:
+            await interaction.response.send_message(f"У вас нет випа или вы ввели неверный SteamID", ephemeral=True)
 
         else:
-            timestamp = datetime_isoparse(jlist).strftime('%d.%m.%Y %H:%M')
+            jList = json.loads(req.text)
+            date_of_end = jList[0]['date_of_end']
+            is_active = jList[0]['is_active']
             
-            await interaction.response.send_message(f"Дата окончания вип: {timestamp} МСК", ephemeral=True)
+            if date_of_end == None:
+                await interaction.response.send_message(f"У вас бессрочный вип", ephemeral=True)
+           
+            else:
+                timestamp = datetime_isoparse(date_of_end).strftime('%d.%m.%Y %H:%M')
+                
+                if is_active == False:
+                    await interaction.response.send_message(f"У вас закончился вип, дата: {timestamp} МСК", ephemeral=True)
+                    
+                times = datetime_isoparse(date_of_end) - datetime.now(timezone.utc)
+                await interaction.response.send_message(f"Количество дней до конца вип: {times.days}.\n\nДата окончания вип: {timestamp} МСК", ephemeral=True)
+
+    except Exception as e:
+        print(e)
 
 
 @client.event
@@ -82,4 +97,4 @@ async def on_ready():
     synced = await tree.sync()
     print(f'Synced {len(synced)} commands')
 
-client.run(token, log_handler=handler)
+client.run(TOKEN, log_handler=handler)
